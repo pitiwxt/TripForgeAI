@@ -8,7 +8,6 @@
 import { useState } from "react";
 import { useTravelStore } from "@/providers/TravelStoreProvider";
 import {
-  getDayColor,
   formatDuration,
   formatDistance,
   DISTRICT_EMOJI,
@@ -147,219 +146,156 @@ function DayPlanView({ day }: { day: DayPlan }) {
 
 // ── Premium PDF Generator ──────────────────────────────────────────────
 
-function hexToRgb(hex: string): [number, number, number] {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return [r, g, b];
-}
-
 async function generatePremiumPDF(
   jsPDF: typeof import("jspdf").default,
   itinerary: ItineraryResponse
 ) {
-  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
-  const pageW = 210;
-  const margin = 18;
-  const contentW = pageW - margin * 2;
-
-  // ── Page 1: Title + Hotel ─────────────────────────────────────────
-  // Header accent bar
-  doc.setFillColor(59, 130, 246);
-  doc.rect(0, 0, pageW, 3, "F");
-
-  // Title
-  doc.setFontSize(28);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 30, 30);
-  doc.text("Travel Itinerary", pageW / 2, 28, { align: "center" });
-
-  // Subtitle line
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, 34, pageW - margin, 34);
-
-  let y = 40;
-
-  // Capture Map Image
   try {
-    const html2canvas = (await import("html2canvas")).default;
+    const { toJpeg } = await import("html-to-image");
+
+    const getImageRatio = (dataUrl: string): Promise<number> => {
+      return new Promise((resolve) => {
+        const img = new Image();
+        img.onload = () => resolve(img.height / img.width);
+        img.src = dataUrl;
+      });
+    };
+
+    // 1. Capture Map
+    let mapImgData: string | null = null;
+    let mapRatio = 1;
     const mapElement = document.querySelector(".leaflet-container") as HTMLElement;
     if (mapElement) {
-      const canvas = await html2canvas(mapElement, { useCORS: true, scale: 2 });
-      const imgData = canvas.toDataURL("image/jpeg", 0.9);
-      const imgProps = doc.getImageProperties(imgData);
-      
-      // Calculate height to fit content width
-      const pdfMapHeight = (imgProps.height * contentW) / imgProps.width;
-      
-      // Add a nice border around the map
-      doc.setDrawColor(200, 200, 200);
-      doc.rect(margin - 1, y - 1, contentW + 2, pdfMapHeight + 2);
-      
-      doc.addImage(imgData, "JPEG", margin, y, contentW, pdfMapHeight);
-      y += pdfMapHeight + 10;
-    }
-  } catch (err) {
-    console.error("Failed to capture map", err);
-  }
-
-  // Check if we need a new page for hotel info
-  if (y > 250) {
-    doc.addPage();
-    doc.setFillColor(59, 130, 246);
-    doc.rect(0, 0, pageW, 3, "F");
-    y = 15;
-  }
-
-  // Hotel info box
-  doc.setFillColor(248, 250, 252);
-  doc.roundedRect(margin, y, contentW, 22, 3, 3, "F");
-  doc.setFontSize(10);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(80, 80, 80);
-  doc.text("ACCOMMODATION", margin + 5, y + 8);
-  doc.setFontSize(13);
-  doc.setTextColor(30, 30, 30);
-  doc.setFont("helvetica", "bold");
-  doc.text(itinerary.hotel.name, margin + 5, y + 15);
-  doc.setFontSize(9);
-  doc.setFont("helvetica", "normal");
-  doc.setTextColor(120, 120, 120);
-  doc.text(itinerary.hotel.address, margin + 5, y + 20);
-
-  y += 32;
-
-  // ── Day Plans ─────────────────────────────────────────────────────
-  for (const day of itinerary.days) {
-    if (y > 240) {
-      doc.addPage();
-      doc.setFillColor(59, 130, 246);
-      doc.rect(0, 0, pageW, 3, "F");
-      y = 15;
-    }
-
-    const [r, g, b] = hexToRgb(day.color);
-
-    // Day header with colored bar
-    doc.setFillColor(r, g, b);
-    doc.roundedRect(margin, y, contentW, 12, 2, 2, "F");
-    doc.setFontSize(13);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(255, 255, 255);
-    doc.text(`Day ${day.day_number}  --  ${day.district_name}`, margin + 5, y + 8);
-
-    // Stats right-aligned
-    const statsText = `${formatDistance(day.total_distance_meters)}  |  ${formatDuration(day.total_duration_seconds)}`;
-    doc.setFontSize(9);
-    doc.text(statsText, pageW - margin - 5, y + 8, { align: "right" });
-
-    y += 17;
-
-    // Places list
-    for (let i = 0; i < day.places.length; i++) {
-      if (y > 270) {
-        doc.addPage();
-        doc.setFillColor(59, 130, 246);
-        doc.rect(0, 0, pageW, 3, "F");
-        y = 15;
-      }
-
-      const place = day.places[i];
-
-      // Number circle
-      doc.setFillColor(r, g, b);
-      doc.circle(margin + 4, y + 1, 3, "F");
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(255, 255, 255);
-      doc.text(`${i + 1}`, margin + 4, y + 2.2, { align: "center" });
-
-      // Place name
-      doc.setFontSize(11);
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(30, 30, 30);
-      doc.text(place.name, margin + 12, y + 2);
-
-      // Address
-      doc.setFontSize(8);
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(140, 140, 140);
-      doc.text(place.address, margin + 12, y + 6);
-
-      // Connector line (dashed)
-      if (i < day.places.length - 1) {
-        doc.setDrawColor(r, g, b);
-        doc.setLineDashPattern([1, 1], 0);
-        doc.line(margin + 4, y + 5, margin + 4, y + 12);
-        doc.setLineDashPattern([], 0);
-      }
-
-      y += 13;
-    }
-
-    y += 5;
-  }
-
-  // ── Navigation Links Section ──────────────────────────────────────
-  if (y > 240) {
-    doc.addPage();
-    doc.setFillColor(59, 130, 246);
-    doc.rect(0, 0, pageW, 3, "F");
-    y = 15;
-  }
-
-  // Section header
-  doc.setDrawColor(200, 200, 200);
-  doc.line(margin, y, pageW - margin, y);
-  y += 8;
-
-  doc.setFontSize(14);
-  doc.setFont("helvetica", "bold");
-  doc.setTextColor(30, 30, 30);
-  doc.text("Google Maps Navigation Links", margin, y);
-  y += 8;
-
-  doc.setFontSize(7.5);
-
-  for (const day of itinerary.days) {
-    const [r, g, b] = hexToRgb(day.color);
-
-    for (const seg of day.route_segments) {
-      if (y > 278) {
-        doc.addPage();
-        doc.setFillColor(59, 130, 246);
-        doc.rect(0, 0, pageW, 3, "F");
-        y = 15;
-      }
-
-      // Route label
-      doc.setFont("helvetica", "bold");
-      doc.setTextColor(r, g, b);
-      doc.text(`Day ${day.day_number}`, margin, y);
-      doc.setTextColor(60, 60, 60);
-      doc.text(`  ${seg.from_place.name}  ->  ${seg.to_place.name}`, margin + 12, y);
-      y += 4;
-
-      // URL
-      doc.setFont("helvetica", "normal");
-      doc.setTextColor(30, 80, 180);
-      doc.textWithLink(seg.google_maps_url, margin + 3, y, {
-        url: seg.google_maps_url,
+      await new Promise(r => setTimeout(r, 200));
+      mapImgData = await toJpeg(mapElement, { 
+        quality: 0.95, 
+        pixelRatio: 2,
+        backgroundColor: '#f8fafc'
       });
-      doc.setTextColor(0);
-      y += 7;
+      mapRatio = await getImageRatio(mapImgData);
     }
+
+    // 2. Capture Itinerary Card
+    let cardImgData: string | null = null;
+    let cardRatio = 1;
+    const cardElement = document.querySelector(".itinerary-card") as HTMLElement;
+    if (cardElement) {
+      cardImgData = await toJpeg(cardElement, {
+        quality: 0.95,
+        pixelRatio: 2,
+        backgroundColor: '#ffffff',
+        filter: (node) => {
+          // Exclude tabs from PDF
+          if (node instanceof Element && node.classList.contains("itinerary-tabs")) {
+            return false;
+          }
+          return true;
+        }
+      });
+      cardRatio = await getImageRatio(cardImgData);
+    }
+
+    // 3. Create PDF
+    const pageW = 210;
+    const margin = 15;
+    const contentW = pageW - margin * 2;
+
+    const titleHeight = 30;
+    const mapHeight = mapImgData ? contentW * mapRatio : 0;
+    const cardHeight = cardImgData ? contentW * cardRatio : 0;
+    const spacing = 10;
+
+    // Single long page format
+    const totalHeight = Math.max(297, titleHeight + mapHeight + spacing + cardHeight + spacing + 20);
+
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [pageW, totalHeight] });
+
+    // Header accent bar
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 0, pageW, 4, "F");
+
+    // Title
+    doc.setFontSize(28);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 30, 30);
+    doc.text("Travel Itinerary", pageW / 2, 22, { align: "center" });
+
+    // Subtitle line
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, 28, pageW - margin, 28);
+
+    let y = 35;
+
+    // Draw Map
+    if (mapImgData && mapHeight > 0) {
+      doc.setDrawColor(220, 220, 220);
+      doc.setLineWidth(0.5);
+      doc.rect(margin - 0.5, y - 0.5, contentW + 1, mapHeight + 1);
+      doc.addImage(mapImgData, "JPEG", margin, y, contentW, mapHeight);
+      y += mapHeight + spacing;
+    }
+
+    // Draw Card
+    if (cardImgData && cardHeight > 0) {
+      doc.addImage(cardImgData, "JPEG", margin, y, contentW, cardHeight);
+      y += cardHeight + spacing;
+    }
+
+    // Navigation Links Section
+    doc.setDrawColor(200, 200, 200);
+    doc.line(margin, y, pageW - margin, y);
+    y += 8;
+
+    doc.setFontSize(14);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(30, 30, 30);
+    doc.text("Google Maps Navigation Links", margin, y);
+    y += 8;
+
+    doc.setFontSize(7.5);
+
+    for (const day of itinerary.days) {
+      // Very crude hexToRgb just for the links label colors
+      const r = parseInt(day.color.slice(1, 3), 16) || 0;
+      const g = parseInt(day.color.slice(3, 5), 16) || 0;
+      const b = parseInt(day.color.slice(5, 7), 16) || 0;
+
+      for (const seg of day.route_segments) {
+        if (y > totalHeight - 20) {
+          doc.addPage();
+          doc.setFillColor(59, 130, 246);
+          doc.rect(0, 0, pageW, 3, "F");
+          y = 15;
+        }
+
+        doc.setFont("helvetica", "bold");
+        doc.setTextColor(r, g, b);
+        doc.text(`Day ${day.day_number}`, margin, y);
+        doc.setTextColor(60, 60, 60);
+        // Fallback ASCII names for the link labels to prevent gibberish
+        doc.text(`  Route`, margin + 12, y);
+        y += 4;
+
+        doc.setFont("helvetica", "normal");
+        doc.setTextColor(30, 80, 180);
+        doc.textWithLink(seg.google_maps_url, margin + 3, y, { url: seg.google_maps_url });
+        doc.setTextColor(0);
+        y += 7;
+      }
+    }
+
+    // Footer
+    doc.setFontSize(8);
+    doc.setTextColor(150, 150, 150);
+    doc.text(
+      `Generated by TripForge AI  |  ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
+      pageW / 2,
+      totalHeight - 10,
+      { align: "center" }
+    );
+
+    doc.save("TripForge-Itinerary.pdf");
+  } catch (err) {
+    console.error("Failed to generate PDF", err);
   }
-
-  // Footer
-  doc.setFontSize(7);
-  doc.setTextColor(180, 180, 180);
-  doc.text(
-    `Generated by TripForge  |  ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
-    pageW / 2,
-    290,
-    { align: "center" }
-  );
-
-  doc.save("travel-itinerary.pdf");
 }
