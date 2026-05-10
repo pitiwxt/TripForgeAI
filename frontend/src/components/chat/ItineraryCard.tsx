@@ -14,6 +14,7 @@ import {
 } from "@/lib/constants";
 import { Navigation, MapPin, Download } from "lucide-react";
 import type { DayPlan, ItineraryResponse } from "@/types";
+import PrintableItinerary from "./PrintableItinerary";
 
 export default function ItineraryCard() {
   const itinerary = useTravelStore((s) => s.itinerary);
@@ -37,6 +38,7 @@ export default function ItineraryCard() {
 
   return (
     <div className="itinerary-card" id="itinerary-card">
+      <PrintableItinerary itinerary={itinerary} />
       {/* Day filter tabs */}
       <div className="itinerary-tabs">
         <button
@@ -161,140 +163,96 @@ async function generatePremiumPDF(
       });
     };
 
-    // 1. Capture Map
-    let mapImgData: string | null = null;
-    let mapRatio = 1;
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+    const pageW = 210;
+    const pageH = 297;
+    const margin = 15;
+    const contentW = pageW - margin * 2;
+    let currentY = margin;
+
+    const addBlock = async (elementId: string) => {
+      const el = document.getElementById(elementId);
+      if (!el) return;
+      
+      // Temporarily make sure it's fully rendered by html-to-image
+      const dataUrl = await toJpeg(el, { 
+        quality: 0.95, 
+        pixelRatio: 2, 
+        backgroundColor: "white",
+      });
+      const ratio = await getImageRatio(dataUrl);
+      const imgHeight = contentW * ratio;
+
+      if (currentY + imgHeight > pageH - margin) {
+        doc.addPage();
+        currentY = margin;
+      }
+      doc.addImage(dataUrl, "JPEG", margin, currentY, contentW, imgHeight);
+      currentY += imgHeight;
+    };
+
+    // 1. Capture Official Header
+    await addBlock("print-block-header");
+
+    // 2. Capture Map (Optional visual)
     const mapElement = document.querySelector(".leaflet-container") as HTMLElement;
     if (mapElement) {
       await new Promise(r => setTimeout(r, 200));
-      mapImgData = await toJpeg(mapElement, { 
+      const mapDataUrl = await toJpeg(mapElement, { 
         quality: 0.95, 
         pixelRatio: 2,
         backgroundColor: '#f8fafc'
       });
-      mapRatio = await getImageRatio(mapImgData);
-    }
-
-    // 2. Capture Itinerary Card
-    let cardImgData: string | null = null;
-    let cardRatio = 1;
-    const cardElement = document.querySelector(".itinerary-card") as HTMLElement;
-    if (cardElement) {
-      cardImgData = await toJpeg(cardElement, {
-        quality: 0.95,
-        pixelRatio: 2,
-        backgroundColor: '#ffffff',
-        filter: (node) => {
-          // Exclude tabs from PDF
-          if (node instanceof Element && node.classList.contains("itinerary-tabs")) {
-            return false;
-          }
-          return true;
-        }
-      });
-      cardRatio = await getImageRatio(cardImgData);
-    }
-
-    // 3. Create PDF
-    const pageW = 210;
-    const margin = 15;
-    const contentW = pageW - margin * 2;
-
-    const titleHeight = 30;
-    const mapHeight = mapImgData ? contentW * mapRatio : 0;
-    const cardHeight = cardImgData ? contentW * cardRatio : 0;
-    const spacing = 10;
-
-    // Single long page format
-    const totalHeight = Math.max(297, titleHeight + mapHeight + spacing + cardHeight + spacing + 20);
-
-    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: [pageW, totalHeight] });
-
-    // Header accent bar
-    doc.setFillColor(59, 130, 246);
-    doc.rect(0, 0, pageW, 4, "F");
-
-    // Title
-    doc.setFontSize(28);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 30, 30);
-    doc.text("Travel Itinerary", pageW / 2, 22, { align: "center" });
-
-    // Subtitle line
-    doc.setDrawColor(200, 200, 200);
-    doc.line(margin, 28, pageW - margin, 28);
-
-    let y = 35;
-
-    // Draw Map
-    if (mapImgData && mapHeight > 0) {
-      doc.setDrawColor(220, 220, 220);
+      const mapRatio = await getImageRatio(mapDataUrl);
+      const mapHeight = contentW * mapRatio;
+      
+      if (currentY + mapHeight > pageH - margin) {
+        doc.addPage();
+        currentY = margin;
+      }
+      doc.setDrawColor(200, 200, 200);
       doc.setLineWidth(0.5);
-      doc.rect(margin - 0.5, y - 0.5, contentW + 1, mapHeight + 1);
-      doc.addImage(mapImgData, "JPEG", margin, y, contentW, mapHeight);
-      y += mapHeight + spacing;
+      doc.rect(margin - 0.5, currentY - 0.5, contentW + 1, mapHeight + 1);
+      doc.addImage(mapDataUrl, "JPEG", margin, currentY, contentW, mapHeight);
+      currentY += mapHeight + 5; // Add a small gap after map
     }
 
-    // Draw Card
-    if (cardImgData && cardHeight > 0) {
-      doc.addImage(cardImgData, "JPEG", margin, y, contentW, cardHeight);
-      y += cardHeight + spacing;
-    }
-
-    // Navigation Links Section
-    doc.setDrawColor(200, 200, 200);
-    doc.line(margin, y, pageW - margin, y);
-    y += 8;
-
-    doc.setFontSize(14);
-    doc.setFont("helvetica", "bold");
-    doc.setTextColor(30, 30, 30);
-    doc.text("Google Maps Navigation Links", margin, y);
-    y += 8;
-
-    doc.setFontSize(7.5);
-
+    // 3. Capture Each Day Block
     for (const day of itinerary.days) {
-      // Very crude hexToRgb just for the links label colors
-      const r = parseInt(day.color.slice(1, 3), 16) || 0;
-      const g = parseInt(day.color.slice(3, 5), 16) || 0;
-      const b = parseInt(day.color.slice(5, 7), 16) || 0;
+      await addBlock(`print-block-day-${day.day_number}`);
+    }
 
+    // 4. Navigation Links Section on a new page
+    doc.addPage();
+    let y = margin;
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.setTextColor(0, 0, 0);
+    doc.text("Official Navigation Links", margin, y);
+    y += 10;
+
+    doc.setFontSize(9);
+    for (const day of itinerary.days) {
       for (const seg of day.route_segments) {
-        if (y > totalHeight - 20) {
+        if (y > pageH - margin) {
           doc.addPage();
-          doc.setFillColor(59, 130, 246);
-          doc.rect(0, 0, pageW, 3, "F");
-          y = 15;
+          y = margin;
         }
 
         doc.setFont("helvetica", "bold");
-        doc.setTextColor(r, g, b);
-        doc.text(`Day ${day.day_number}`, margin, y);
-        doc.setTextColor(60, 60, 60);
-        // Fallback ASCII names for the link labels to prevent gibberish
-        doc.text(`  Route`, margin + 12, y);
-        y += 4;
+        doc.setTextColor(50, 50, 50);
+        doc.text(`Day ${day.day_number} Route`, margin, y);
+        y += 5;
 
         doc.setFont("helvetica", "normal");
         doc.setTextColor(30, 80, 180);
-        doc.textWithLink(seg.google_maps_url, margin + 3, y, { url: seg.google_maps_url });
+        doc.textWithLink(seg.google_maps_url, margin, y, { url: seg.google_maps_url });
         doc.setTextColor(0);
-        y += 7;
+        y += 8;
       }
     }
 
-    // Footer
-    doc.setFontSize(8);
-    doc.setTextColor(150, 150, 150);
-    doc.text(
-      `Generated by TripForge AI  |  ${new Date().toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" })}`,
-      pageW / 2,
-      totalHeight - 10,
-      { align: "center" }
-    );
-
-    doc.save("TripForge-Itinerary.pdf");
+    doc.save("Official-Itinerary.pdf");
   } catch (err) {
     console.error("Failed to generate PDF", err);
   }
