@@ -172,29 +172,62 @@ async function generatePremiumPDF(
   doc.setFontSize(28);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(30, 30, 30);
-  doc.text("Osaka Travel Itinerary", pageW / 2, 28, { align: "center" });
+  doc.text("Travel Itinerary", pageW / 2, 28, { align: "center" });
 
   // Subtitle line
   doc.setDrawColor(200, 200, 200);
   doc.line(margin, 34, pageW - margin, 34);
 
+  let y = 40;
+
+  // Capture Map Image
+  try {
+    const html2canvas = (await import("html2canvas")).default;
+    const mapElement = document.querySelector(".leaflet-container") as HTMLElement;
+    if (mapElement) {
+      const canvas = await html2canvas(mapElement, { useCORS: true, scale: 2 });
+      const imgData = canvas.toDataURL("image/jpeg", 0.9);
+      const imgProps = doc.getImageProperties(imgData);
+      
+      // Calculate height to fit content width
+      const pdfMapHeight = (imgProps.height * contentW) / imgProps.width;
+      
+      // Add a nice border around the map
+      doc.setDrawColor(200, 200, 200);
+      doc.rect(margin - 1, y - 1, contentW + 2, pdfMapHeight + 2);
+      
+      doc.addImage(imgData, "JPEG", margin, y, contentW, pdfMapHeight);
+      y += pdfMapHeight + 10;
+    }
+  } catch (err) {
+    console.error("Failed to capture map", err);
+  }
+
+  // Check if we need a new page for hotel info
+  if (y > 250) {
+    doc.addPage();
+    doc.setFillColor(59, 130, 246);
+    doc.rect(0, 0, pageW, 3, "F");
+    y = 15;
+  }
+
   // Hotel info box
   doc.setFillColor(248, 250, 252);
-  doc.roundedRect(margin, 40, contentW, 22, 3, 3, "F");
+  doc.roundedRect(margin, y, contentW, 22, 3, 3, "F");
   doc.setFontSize(10);
   doc.setFont("helvetica", "bold");
   doc.setTextColor(80, 80, 80);
-  doc.text("ACCOMMODATION", margin + 5, 48);
+  doc.text("ACCOMMODATION", margin + 5, y + 8);
   doc.setFontSize(13);
   doc.setTextColor(30, 30, 30);
   doc.setFont("helvetica", "bold");
-  doc.text(itinerary.hotel.name, margin + 5, 55);
+  doc.text(itinerary.hotel.name, margin + 5, y + 15);
   doc.setFontSize(9);
   doc.setFont("helvetica", "normal");
   doc.setTextColor(120, 120, 120);
-  doc.text(itinerary.hotel.address, margin + 5, 60);
+  doc.text(itinerary.hotel.address, margin + 5, y + 20);
 
-  let y = 72;
+  y += 32;
 
   // ── Day Plans ─────────────────────────────────────────────────────
   for (const day of itinerary.days) {
@@ -328,5 +361,5 @@ async function generatePremiumPDF(
     { align: "center" }
   );
 
-  doc.save("osaka-itinerary.pdf");
+  doc.save("travel-itinerary.pdf");
 }
