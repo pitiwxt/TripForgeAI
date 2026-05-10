@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: tripforge-api
+    runtime: docker
+    repo: https://github.com/pitiwxt/TripForgeAI
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: DEBUG
+        value: false
+    healthCheckPath: /api/v1/health
