@@ -333,6 +333,37 @@ async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: i
         hotel = GeocodedPlace(name="Hotel", lat=lat, lng=lng, address=f"{lat}, {lng}", district="")
     else:
         hotel = await geocode_place(hotel_input)
+        
+        # Fallback 1: Try stripping parentheses from hotel name
+        if not hotel and "(" in hotel_input:
+            clean_input = re.sub(r'\(.*?\)', '', hotel_input).strip()
+            hotel = await geocode_place(clean_input)
+            
+        # Fallback 2: Try using text INSIDE parentheses (e.g. 'Near Daikokucho Station')
+        if not hotel and "(" in hotel_input:
+            in_parens = re.search(r'\((.*?)\)', hotel_input)
+            if in_parens:
+                hotel = await geocode_place(in_parens.group(1).replace("Near", "").strip())
+
+        # Fallback 3: Pin hotel to the first place in the itinerary
+        if not hotel:
+            first_place = None
+            if daily_place_names and len(daily_place_names) > 0 and len(daily_place_names[0]) > 0:
+                first_place = daily_place_names[0][0]
+            elif place_names and len(place_names) > 0:
+                first_place = place_names[0]
+                
+            if first_place:
+                fallback_hotel = await geocode_place(first_place)
+                if fallback_hotel:
+                    hotel = GeocodedPlace(
+                        name=f"{hotel_input} ⚠️",
+                        lat=fallback_hotel.lat,
+                        lng=fallback_hotel.lng,
+                        address="Map location not found",
+                        district=fallback_hotel.district
+                    )
+
         if not hotel:
             return None
 
