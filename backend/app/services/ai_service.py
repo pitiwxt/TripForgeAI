@@ -73,7 +73,18 @@ TOOLS = [
                 "properties": {
                     "hotel_name": {"type": "string", "description": "Hotel name or 'lat,lng' coordinates"},
                     "requested_places": {"type": "array", "items": {"type": "string"}, "description": "All attractions/places to visit (use specific names)"},
-                    "daily_places": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "Use this INSTEAD of requested_places if the user explicitly assigns places to specific days (e.g. Day 1: X, Day 2: Y)."},
+                    "daily_places": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "day": {"type": "integer"},
+                                "places": {"type": "array", "items": {"type": "string"}}
+                            },
+                            "required": ["day", "places"]
+                        },
+                        "description": "Use this INSTEAD of requested_places if the user explicitly assigns places to specific days."
+                    },
                     "num_days": {"type": "integer", "description": "Number of days"},
                 },
                 "required": ["hotel_name", "num_days"],
@@ -233,7 +244,12 @@ async def _handle_tool(name: str, args: dict, current_itinerary: dict | None):
     if name == "generate_itinerary":
         hotel = args.get("hotel_name", "")
         places = list(args.get("requested_places", []))
-        daily_places = args.get("daily_places", [])
+        daily_places_raw = args.get("daily_places", [])
+        daily_places = []
+        if daily_places_raw and isinstance(daily_places_raw[0], dict):
+            for d in sorted(daily_places_raw, key=lambda x: x.get("day", 1)):
+                daily_places.append(d.get("places", []))
+        
         days = int(args.get("num_days", len(daily_places) or 2))
 
         itin = await _build_itinerary(hotel, places, days, daily_places)
