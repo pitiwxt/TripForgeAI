@@ -139,7 +139,7 @@ async def geocode_place(place_name: str) -> GeocodedPlace | None:
 
     # ── Check places DB first (instant, no rate limit) ──────────────
     for key, data in PLACES_DB.items():
-        if key == normalized or (len(normalized) > 4 and (key in normalized or normalized in key)):
+        if key == normalized:
             result = GeocodedPlace(
                 name=place_name.title() if place_name.islower() else place_name,
                 lat=data["lat"],
