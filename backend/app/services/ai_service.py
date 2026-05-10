@@ -332,6 +332,15 @@ async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: i
                     p = await geocode_place(name)
                     if p:
                         cluster.append(p)
+                    else:
+                        # Fallback: don't silently drop it, pin it at hotel
+                        cluster.append(GeocodedPlace(
+                            name=f"{name} ⚠️",
+                            lat=hotel.lat,
+                            lng=hotel.lng,
+                            address="Map location not found",
+                            district="Unknown"
+                        ))
             daily_clusters.append(cluster)
         
         return await generate_itinerary(hotel=hotel, daily_clusters=daily_clusters)
@@ -345,6 +354,14 @@ async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: i
             p = await geocode_place(name)
             if p:
                 places.append(p)
+            else:
+                places.append(GeocodedPlace(
+                    name=f"{name} ⚠️",
+                    lat=hotel.lat,
+                    lng=hotel.lng,
+                    address="Map location not found",
+                    district="Unknown"
+                ))
 
     if not places:
         return None
