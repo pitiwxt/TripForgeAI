@@ -374,13 +374,21 @@ async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: i
 def _format_summary(itin: ItineraryResponse) -> str:
     """Format itinerary as readable text."""
     lines = []
+    missing_places = []
     for d in itin.days:
         if not d.places:
             continue
         names = " → ".join([p.name for p in d.places])
+        for p in d.places:
+            if "⚠️" in p.name:
+                missing_places.append(p.name.replace(" ⚠️", ""))
         mins = d.total_duration_seconds // 60
         km = d.total_distance_meters / 1000
         area = f" [{d.district_name}]" if d.district_name else ""
         lines.append(f"**Day {d.day_number}{area}:** {names} (~{mins}min, {km:.1f}km)")
+    
+    if missing_places:
+        lines.append(f"\n⚠️ **ข้อควรระวัง:** ระบบไม่พบพิกัดที่แน่ชัดของสถานที่เหล่านี้ (อาจจะพิมพ์ผิดหรือชื่อเฉพาะเกินไป): **{', '.join(missing_places)}** \nระบบจึงจัดให้แสดงผลชั่วคราวไว้ที่โรงแรมของคุณครับ")
+
     lines.append("\nWant to change anything? Just tell me!")
     return "\n".join(lines)
