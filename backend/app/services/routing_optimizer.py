@@ -186,16 +186,20 @@ def _get_cluster_name(places: list[GeocodedPlace]) -> str:
 
 async def generate_itinerary(
     hotel: GeocodedPlace,
-    places: list[GeocodedPlace],
-    num_days: int,
+    places: list[GeocodedPlace] = None,
+    num_days: int = 0,
+    daily_clusters: list[list[GeocodedPlace]] = None,
 ) -> ItineraryResponse:
     """Main orchestrator — generates a complete multi-day optimized itinerary."""
     logger.info(
         f"Generating itinerary: hotel='{hotel.name}', "
-        f"places={[p.name for p in places]}, days={num_days}"
+        f"days={num_days}, using_daily_clusters={bool(daily_clusters)}"
     )
 
-    clusters = _cluster_places(places, num_days)
+    if daily_clusters:
+        clusters = daily_clusters
+    else:
+        clusters = _cluster_places(places or [], num_days)
     day_plans: list[DayPlan] = []
 
     for day_idx, cluster_places in enumerate(clusters):

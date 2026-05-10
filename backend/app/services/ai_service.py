@@ -31,6 +31,7 @@ Number of places MUST be >= num_days × 2 (at least 2 per day).
 3-day trip → 6-8 places. 5-day trip → 10-12 places. 7-day trip → 14+ places.
 Use SPECIFIC attraction names: "Senso-ji Temple" not "temple", "Chatuchak Weekend Market" not "market".
 Append the city name to help geocoding: "Grand Palace, Bangkok", "Otaru Canal, Hokkaido".
+If the user explicitly specifies what places go on which days (e.g. "Day 1: X, Day 2: Y"), you MUST use the `daily_places` parameter instead of `requested_places` to preserve their exact day assignments.
 
 ### Hotel selection — MUST be in the SAME area as attractions!
 The hotel MUST be located IN the destination city/region, NOT a random city.
@@ -72,9 +73,10 @@ TOOLS = [
                 "properties": {
                     "hotel_name": {"type": "string", "description": "Hotel name or 'lat,lng' coordinates"},
                     "requested_places": {"type": "array", "items": {"type": "string"}, "description": "All attractions/places to visit (use specific names)"},
+                    "daily_places": {"type": "array", "items": {"type": "array", "items": {"type": "string"}}, "description": "Use this INSTEAD of requested_places if the user explicitly assigns places to specific days (e.g. Day 1: X, Day 2: Y)."},
                     "num_days": {"type": "integer", "description": "Number of days"},
                 },
-                "required": ["hotel_name", "requested_places", "num_days"],
+                "required": ["hotel_name", "num_days"],
             },
         },
     },
@@ -231,9 +233,10 @@ async def _handle_tool(name: str, args: dict, current_itinerary: dict | None):
     if name == "generate_itinerary":
         hotel = args.get("hotel_name", "")
         places = list(args.get("requested_places", []))
-        days = int(args.get("num_days", 2))
+        daily_places = args.get("daily_places", [])
+        days = int(args.get("num_days", len(daily_places) or 2))
 
-        itin = await _build_itinerary(hotel, places, days)
+        itin = await _build_itinerary(hotel, places, days, daily_places)
         if not itin:
             return "I had trouble finding some places. Try more specific names (e.g. 'Senso-ji Temple, Tokyo').", None
         return _format_summary(itin), itin
@@ -306,7 +309,7 @@ async def _handle_tool(name: str, args: dict, current_itinerary: dict | None):
     return "I'm not sure how to handle that. Could you rephrase?", None
 
 
-async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: int) -> ItineraryResponse | None:
+async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: int, daily_place_names: list[list[str]] = None) -> ItineraryResponse | None:
     """Geocode places and build optimized itinerary — works for any location."""
     coord = re.match(r'^\s*(-?\d+\.?\d*)\s*[,\s]\s*(-?\d+\.?\d*)\s*$', hotel_input)
     if coord:
@@ -316,6 +319,22 @@ async def _build_itinerary(hotel_input: str, place_names: list[str], num_days: i
         hotel = await geocode_place(hotel_input)
         if not hotel:
             return None
+
+    if daily_place_names:
+        daily_clusters = []
+        for day_names in daily_place_names:
+            cluster = []
+            for name in day_names:
+                c = re.match(r'^\s*(-?\d+\.?\d*)\s*[,\s]\s*(-?\d+\.?\d*)\s*$', name)
+                if c:
+                    cluster.append(GeocodedPlace(name=name, lat=float(c.group(1)), lng=float(c.group(2)), address="", district=""))
+                else:
+                    p = await geocode_place(name)
+                    if p:
+                        cluster.append(p)
+            daily_clusters.append(cluster)
+        
+        return await generate_itinerary(hotel=hotel, daily_clusters=daily_clusters)
 
     places = []
     for name in place_names:
