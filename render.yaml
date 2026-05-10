@@ -11,3 +11,16 @@ services:
       - key: DEBUG
         value: false
     healthCheckPath: /api/v1/health
+
+  - type: web
+    name: tripforge-frontend
+    runtime: node
+    repo: https://github.com/pitiwxt/TripForgeAI
+    rootDir: frontend
+    buildCommand: npm install && npm run build
+    startCommand: npm start
+    envVars:
+      - key: NEXT_PUBLIC_API_URL
+        value: https://tripforge-api-8ycx.onrender.com
+      - key: NODE_ENV
+        value: production
